@@ -1,87 +1,231 @@
 # tomcat
 
-Welcome to your new module. A short overview of the generated parts can be found in the PDK documentation at https://puppet.com/docs/pdk/latest/pdk_generating_modules.html .
-
-The README template below provides a starting point with details about what information to include in your README.
-
 #### Table of Contents
 
-1. [Description](#description)
-2. [Setup - The basics of getting started with tomcat](#setup)
-    * [What tomcat affects](#what-tomcat-affects)
-    * [Setup requirements](#setup-requirements)
+1. [Overview](#overview)
+2. [Module Description - What the module does and why it is useful](#module-description)
+3. [Setup - The basics of getting started with tomcat](#setup)
+    * [Setup requirements](#requirements)
     * [Beginning with tomcat](#beginning-with-tomcat)
-3. [Usage - Configuration options and additional functionality](#usage)
-4. [Limitations - OS compatibility, etc.](#limitations)
-5. [Development - Guide for contributing to the module](#development)
+4. [Usage - Configuration options and additional functionality](#usage)
+    * [I want to run multiple instances of multiple versions of Tomcat](#i-want-to-run-multiple-instances-of-multiple-versions-of-tomcat)
+    * [I want to configure SSL and specify which protocols and ciphers to use](#i-want-to-configure-ssl-and-specify-which-protocols-and-ciphers-to-use)
+    * [I want to deploy WAR files.](#i-want-to-deploy-war-files)
+    * [I want to remove some configuration](#i-want-to-remove-some-configuration)
+    * [I want to manage a Connector or Realm that already exists](#i-want-to-manage-a-connector-or-realm-that-already-exists)
+5. [Reference - An under-the-hood peek at what the module is doing and how](#reference)
+6. [Limitations - OS compatibility, etc.](#limitations)
+7. [Development - Guide for contributing to the module](#development)
 
-## Description
+## Overview
 
-Briefly tell users why they might want to use your module. Explain what your module does and what kind of problems users can solve with it.
+The tomcat module lets you use Puppet to install, deploy, and configure Tomcat web services.
 
-This should be a fairly short description helps the user decide if your module is what they want.
+## Module Description
+
+Tomcat is a Java web service provider. The tomcat module lets you use Puppet to install Tomcat, manage its configuration file, and deploy web apps to it. It supports multiple instances of Tomcat spanning multiple versions.
 
 ## Setup
 
-### What tomcat affects **OPTIONAL**
+### Requirements
 
-If it's obvious what your module touches, you can skip this section. For example, folks can probably figure out that your mysql_instance module affects their MySQL instances.
+The tomcat module requires [puppetlabs-stdlib](https://forge.puppetlabs.com/puppetlabs/stdlib) version 4.0 or newer. On Puppet Enterprise you must meet this requirement before installing the module. To update stdlib, run:
 
-If there's more that they should know about, though, this is the place to mention:
-
-* Files, packages, services, or operations that the module will alter, impact, or execute.
-* Dependencies that your module automatically installs.
-* Warnings or other important notices.
-
-### Setup Requirements **OPTIONAL**
-
-If your module requires anything extra before setting up (pluginsync enabled, another module, etc.), mention it here.
-
-If your most recent release breaks compatibility or requires particular steps for upgrading, you might want to include an additional "Upgrading" section here.
+```bash
+puppet module upgrade puppetlabs-stdlib
+```
 
 ### Beginning with tomcat
 
-The very basic steps needed for a user to get the module up and running. This can include setup steps, if necessary, or it can be an example of the most basic use of the module.
+The simplest way to get Tomcat up and running with the tomcat module is to install the Tomcat source and start the service:
+
+```puppet
+tomcat::install { '/opt/tomcat':
+  source_url => 'https://www-us.apache.org/dist/tomcat/tomcat-7/v7.0.x/bin/apache-tomcat-7.0.x.tar.gz',
+}
+tomcat::instance { 'default':
+  catalina_home => '/opt/tomcat',
+}
+```
+
+> Note: look up the correct version you want to install on the [version list](http://tomcat.apache.org/whichversion.html).
 
 ## Usage
 
-Include usage examples for common use cases in the **Usage** section. Show your users how to use your module to solve problems, and be sure to include code examples. Include three to five examples of the most important or common tasks a user can accomplish with your module. Show users how to accomplish more complex tasks that involve different types, classes, and functions working in tandem.
+### I want to run multiple instances of multiple versions of Tomcat
+
+```puppet
+class { 'java': }
+
+tomcat::install { '/opt/tomcat9':
+  source_url => 'https://www.apache.org/dist/tomcat/tomcat-9/v9.0.x/bin/apache-tomcat-9.0.x.tar.gz'
+}
+tomcat::instance { 'tomcat9-first':
+  catalina_home => '/opt/tomcat9',
+  catalina_base => '/opt/tomcat9/first',
+}
+tomcat::instance { 'tomcat9-second':
+  catalina_home => '/opt/tomcat9',
+  catalina_base => '/opt/tomcat9/second',
+}
+# Change the default port of the second instance server and HTTP connector
+tomcat::config::server { 'tomcat9-second':
+  catalina_base => '/opt/tomcat9/second',
+  port          => '8006',
+}
+tomcat::config::server::connector { 'tomcat9-second-http':
+  catalina_base         => '/opt/tomcat9/second',
+  port                  => '8081',
+  protocol              => 'HTTP/1.1',
+  additional_attributes => {
+    'redirectPort' => '8443'
+  },
+}
+
+tomcat::install { '/opt/tomcat7':
+  source_url => 'http://www-eu.apache.org/dist/tomcat/tomcat-7/v7.0.x/bin/apache-tomcat-7.0.x.tar.gz',
+}
+tomcat::instance { 'tomcat7':
+  catalina_home => '/opt/tomcat7',
+}
+# Change tomcat 7's server and HTTP/AJP connectors
+tomcat::config::server { 'tomcat7':
+  catalina_base => '/opt/tomcat7',
+  port          => '8105',
+}
+tomcat::config::server::connector { 'tomcat7-http':
+  catalina_base         => '/opt/tomcat7',
+  port                  => '8180',
+  protocol              => 'HTTP/1.1',
+  additional_attributes => {
+    'redirectPort' => '8543'
+  },
+}
+tomcat::config::server::connector { 'tomcat7-ajp':
+  catalina_base         => '/opt/tomcat7',
+  port                  => '8109',
+  protocol              => 'AJP/1.3',
+  additional_attributes => {
+    'redirectPort' => '8543'
+  },
+}
+```
+
+> Note: look up the correct version you want to install on the [version list](http://tomcat.apache.org/whichversion.html).
+
+### I want to configure SSL and specify which protocols and ciphers to use
+
+```puppet
+  file { $keystore_path: 
+    ensure => present,
+    source => $keystore_source,
+    owner => $keystore_user,
+    mode => '0400',
+    checksum => 'md5',
+    checksum_value => $keystore_checksum,
+  } ->
+
+  tomcat::config::server::connector { "${tomcat_instance}-https":
+    catalina_base         => $catalina_base,
+    port                  => $https_port,
+    protocol              => $http_version,
+    purge_connectors      => true,
+    additional_attributes => {
+      'SSLEnabled'          => bool2str($https_enabled),
+      'maxThreads'          => $https_connector_max_threads,
+      'scheme'              => $https_connector_scheme,
+      'secure'              => bool2str($https_connector_secure),
+      'clientAuth'          => bool2str($https_connector_client_auth),
+      'sslProtocol'         => $https_connector_ssl_protocol,
+      'sslEnabledProtocols' => join($https_connector_ssl_protocols_enabled, ","),
+      'ciphers'             => join($ciphers_enabled, ","),
+      
+      'keystorePass'        => $keystore_pass.unwrap,
+      'keystoreFile'        => $keystore_path,
+    },
+  }
+```
+
+> See also: [SSL/TLS Configuration HOW-TO](https://tomcat.apache.org/tomcat-8.5-doc/ssl-howto.html)
+
+### I want to deploy WAR files
+
+Add the following to any existing installation with your own war source:
+```puppet
+tomcat::war { 'sample.war':
+  catalina_base => '/opt/tomcat9/first',
+  war_source    => '/opt/tomcat9/webapps/docs/appdev/sample/sample.war',
+}
+```
+
+The name of the WAR file must end with `.war`.
+
+The `war_source` can be a local path or a `puppet:///`, `http://`, or `ftp://` URL.
+
+### I want to remove some configuration
+
+Different configuration defined types will allow an ensure parameter to be passed, though the name may vary based on the defined type.
+
+To remove a connector, for instance, the following configuration ensure that it is absent:
+
+```puppet
+tomcat::config::server::connector { 'tomcat9-jsvc':
+  connector_ensure => 'absent',
+  catalina_base    => '/opt/tomcat9/first',
+  port             => '8080',
+  protocol         => 'HTTP/1.1',
+}
+```
+
+### I want to manage a Connector or Realm that already exists
+
+Describe the Realm or HTTP Connector element using `tomcat::config::server::realm` or `tomcat::config::server::connector`, and set `purge_realms` or `purge_connectors` to `true`.
+
+```puppet
+tomcat::config::server::realm { 'org.apache.catalina.realm.LockOutRealm':
+  realm_ensure => 'present',
+  purge_realms => true,
+}
+```
+
+Puppet removes any existing Connectors or Realms and leaves only the ones you've specified.
 
 ## Reference
 
-This section is deprecated. Instead, add reference information to your code as Puppet Strings comments, and then use Strings to generate a REFERENCE.md in your module. For details on how to add code comments and generate documentation with Strings, see the Puppet Strings [documentation](https://puppet.com/docs/puppet/latest/puppet_strings.html) and [style guide](https://puppet.com/docs/puppet/latest/puppet_strings_style.html)
-
-If you aren't ready to use Strings yet, manually create a REFERENCE.md in the root of your module directory and list out each of your module's classes, defined types, facts, functions, Puppet tasks, task plans, and resource types and providers, along with the parameters for each.
-
-For each element (class, defined type, function, and so on), list:
-
-  * The data type, if applicable.
-  * A description of what the element does.
-  * Valid values, if the data type doesn't make it obvious.
-  * Default value, if any.
-
-For example:
-
-```
-### `pet::cat`
-
-#### Parameters
-
-##### `meow`
-
-Enables vocalization in your cat. Valid options: 'string'.
-
-Default: 'medium-loud'.
-```
+See [REFERENCE.md](https://github.com/puppetlabs/puppetlabs-tomcat/blob/master/REFERENCE.md)
 
 ## Limitations
 
-In the Limitations section, list any incompatibilities, known issues, or other warnings.
+For an extensive list of supported operating systems, see [metadata.json](https://github.com/puppetlabs/puppetlabs-tomcat/blob/master/metadata.json)
+
+The `tomcat::config::server*` defined types require Augeas version 1.0.0 or newer.
+
+### Multiple Instances
+
+Some Tomcat packages do not let you install more than one instance. You can avoid this limitation by installing Tomcat from source.
 
 ## Development
 
-In the Development section, tell other users the ground rules for contributing to your project and how they should submit their work.
+Puppet Labs modules on the Puppet Forge are open projects, and community contributions are essential for keeping them great. We can't access the huge number of platforms and myriad of hardware, software, and deployment configurations that Puppet is intended to serve.
 
-## Release Notes/Contributors/Etc. **Optional**
+We want to keep it as easy as possible to contribute changes so that our modules work in your environment. There are a few guidelines that we need contributors to follow so that we can have a chance of keeping on top of things.
 
-If you aren't using changelog, put your release notes here (though you should consider using changelog). You can also add any additional sections you feel are necessary or important to include here. Please use the `## ` header.
+For more information, see our [module contribution guide.](https://puppet.com/docs/puppet/latest/contributing.html)
+
+### Contributors
+
+To see who's already involved, see the [list of contributors.](https://github.com/puppetlabs/puppetlabs-tomcat/graphs/contributors)
+
+### Running tests
+
+This project contains tests for both [rspec-puppet](http://rspec-puppet.com/) and [beaker-rspec](https://github.com/puppetlabs/beaker-rspec) to verify functionality. For in-depth information, please see their respective documentation.
+
+Quickstart:
+
+```bash
+gem install bundler
+bundle install
+bundle exec rake spec
+bundle exec rspec spec/acceptance
+RS_DEBUG=yes bundle exec rspec spec/acceptance
+```
