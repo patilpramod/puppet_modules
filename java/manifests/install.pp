@@ -1,6 +1,6 @@
 #Install Java on the RHEL/CentOS Servers
 
-class install {
+class java::install {
   package { 'java':
     ensure => 'installed'
   }
