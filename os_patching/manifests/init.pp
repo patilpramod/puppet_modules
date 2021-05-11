@@ -123,7 +123,7 @@
 #   class { 'os_patching':
 #     ensure => absent,
 #   }
-class os_patching (
+class os_patching::os_patching (
   String $patch_data_owner            = 'root',
   String $patch_data_group            = 'root',
   String $patch_cron_user             = $patch_data_owner,
